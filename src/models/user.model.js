@@ -35,7 +35,7 @@ const userSchema = new Schema(
     },
     watchHistory: [
       {
-        type: Schema.Types.ObjectId.Id,
+        type: Schema.Types.ObjectId,
         ref: "Video",
       },
     ],
@@ -57,7 +57,7 @@ const userSchema = new Schema(
 userSchema.pre("save", async function (next) {
   // We get this.isModified in which we can pass a parameter in string which will check if the password has been modified, will return boolean
   if (this.isModified("password")) {
-    this.password = bcrypt.hash(this.password, 10);
+    this.password = await bcrypt.hash(this.password, 10);
   }
   // Whenever using middleware we have to use next so that we know it has been completed and it can move to next step.
   next();
