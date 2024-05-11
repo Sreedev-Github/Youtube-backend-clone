@@ -4,6 +4,7 @@ import { ApiResponse } from "../utils/ApiResponse.js";
 import { User } from "../models/user.model.js";
 import { uploadOnCloudinary } from "../utils/cloudinary.js";
 import jwt from "jsonwebtoken";
+import mongoose from "mongoose";
 
 // Get user details from frontend
 // Validation is done both on frontend and backend
@@ -437,9 +438,9 @@ const getUserChannelProfile = asyncHandler(async (req, res) => {
             if: { $in: [req.user?._id, "$subscribers.subscriber"] },
             then: true,
             esle: false,
-          }
-        }
-      }
+          },
+        },
+      },
     },
     // Project returns the selected fields
     {
@@ -453,18 +454,80 @@ const getUserChannelProfile = asyncHandler(async (req, res) => {
         coverImage: 1,
         email: 1,
         createdAt: 1,
-      }
-    }
+      },
+    },
   ]);
 
   // Check if theres any value in channel vairable or not
-  if(!channel?.length){
-    throw new ApiError(404, "Channel does not exists")
+  if (!channel?.length) {
+    throw new ApiError(404, "Channel does not exists");
   }
 
   return res
-  .status(200)
-  .json(new ApiResponse(200, channel[0], "User channel fetched successfully"))
+    .status(200)
+    .json(
+      new ApiResponse(200, channel[0], "User channel fetched successfully")
+    );
+});
+
+// Watch history
+//  Importatnt Note:- Aggregation piplelines are handles by mongoDb and not mongoose os use your syntax accordingly
+const getWatchHistory = asyncHandler(async (req, res) => {
+  const user = await User.aggregate([
+    {
+      $match: {
+        // check later for this ObjectId deprecation
+        // using this object.id as we are giving this to mongoDB and not mongoose
+        _id: new mongoose.Types.ObjectId(req.user._id),
+      },
+    },
+    {
+      $lookup: {
+        from: "videos",
+        localField: "watchHistory",
+        foreignField: "_id",
+        as: "watchHistory",
+        // piplelne
+        pipleline: [
+          {
+            $lookup: {
+              from: "users",
+              localField: "owner",
+              foreignField: "_id",
+              as: "owner",
+              // sub-piplelne
+              pipleline: [
+                {
+                  $project: {
+                    fullName: 1,
+                    username: 1,
+                    avatar: 1,
+                  },
+                },
+              ],
+            },
+          },
+          {
+            $addFields: {
+              owner: {
+                $first: "$owner",
+              },
+            },
+          },
+        ],
+      },
+    },
+  ]);
+
+  return res
+    .status(200)
+    .json(
+      new ApiResponse(
+        200,
+        user[0].watchHistory,
+        "Watch history fetched successfully"
+      )
+    );
 });
 
 export {
@@ -477,4 +540,5 @@ export {
   updateUserAvatar,
   updateUserCoverImage,
   getUserChannelProfile,
+  getWatchHistory,
 };
