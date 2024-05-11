@@ -471,7 +471,7 @@ const getUserChannelProfile = asyncHandler(async (req, res) => {
 });
 
 // Watch history
-//  Importatnt Note:- Aggregation piplelines are handles by mongoDb and not mongoose os use your syntax accordingly
+//  Importatnt Note:- Aggregation piplelines are handles by mongoDb, not by mongoose so use your syntax accordingly
 const getWatchHistory = asyncHandler(async (req, res) => {
   const user = await User.aggregate([
     {
