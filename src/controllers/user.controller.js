@@ -347,11 +347,12 @@ const updateUserAvatar = asyncHandler(async (req, res) => {
     { new: true }
   ).select("-password");
 
+  // TODO: Delete old image
+
   return res
     .status(200)
     .json(new ApiResponse(200, user, "Avatar updated successfully"));
 });
-
 
 // Update Cover image
 const updateUserCoverImage = asyncHandler(async (req, res) => {
@@ -382,6 +383,90 @@ const updateUserCoverImage = asyncHandler(async (req, res) => {
     .json(new ApiResponse(200, user, "Cover image updated successfully"));
 });
 
+// getUserChannelProfile
+
+const getUserChannelProfile = asyncHandler(async (req, res) => {
+  const { username } = req.params;
+
+  if (!username?.trim()) {
+    throw new ApiError(400, "username is missing");
+  }
+
+  // Aggregation
+  // Returns array
+  const channel = await User.aggregate([
+    {
+      // Match and find the user based on username.
+      $match: {
+        username: username?.toLowerCase(),
+      },
+    },
+    // Finding all the documents in which a channel is present as it will be serving as the number of documents which has subscribed to the user channel.
+    {
+      // We give the model name which is going to be saved in mongoDB. Means it has to be lowercase and plural
+      $lookup: {
+        from: "subscriptions",
+        localField: "_id",
+        foreignField: "channel",
+        as: "subscribers",
+      },
+    },
+    // Lookup for finding the number of channel the channel owner has subscriber to
+    {
+      $lookup: {
+        from: "subscriptions",
+        localField: "_id",
+        foreignField: "subscriber",
+        as: "subscribedTo",
+      },
+    },
+    // getting the number of documents present in that array and we are also using addFields so that we can add 2 more files to our user which contains the numbers.
+    {
+      $addFields: {
+        subscribersCount: {
+          $size: "$subscribers",
+        },
+        channelsSubscribedToCount: {
+          $size: "$subscribedTo",
+        },
+        // Here are checking a condition (cond) which helps is to check if the user who is logged in is subscribed to the channel or not.
+        // We are using $subscribers.subscriber cause in that array there are objects so we want to make sure we are checking in that subscribers and not channel
+        isSubscribed: {
+          $cond: {
+            // in method looks inside both array and objects
+            if: { $in: [req.user?._id, "$subscribers.subscriber"] },
+            then: true,
+            esle: false,
+          }
+        }
+      }
+    },
+    // Project returns the selected fields
+    {
+      $project: {
+        fullName: 1,
+        username: 1,
+        subscribersCount: 1,
+        channelsSubscribedToCount: 1,
+        isSubscribed: 1,
+        avatar: 1,
+        coverImage: 1,
+        email: 1,
+        createdAt: 1,
+      }
+    }
+  ]);
+
+  // Check if theres any value in channel vairable or not
+  if(!channel?.length){
+    throw new ApiError(404, "Channel does not exists")
+  }
+
+  return res
+  .status(200)
+  .json(new ApiResponse(200, channel[0], "User channel fetched successfully"))
+});
+
 export {
   registerUser,
   loginUser,
@@ -390,5 +475,6 @@ export {
   changeCurrentUserPassword,
   getCurrentUser,
   updateUserAvatar,
-  updateUserCoverImage
+  updateUserCoverImage,
+  getUserChannelProfile,
 };
