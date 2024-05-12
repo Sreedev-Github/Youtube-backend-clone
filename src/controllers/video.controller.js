@@ -14,6 +14,10 @@ const uploadVideo = asyncHandler(async (req, res) => {
     throw new ApiError(400, "Please provide all the required data");
   }
 
+  if (!req.files) {
+    throw new ApiError(401, "Please upload a video and thumbnail");
+  }
+
   const videoLocalPath = req.files?.video[0]?.path;
 
   if (!videoLocalPath) {
@@ -50,12 +54,16 @@ const uploadVideo = asyncHandler(async (req, res) => {
     throw new ApiError(500, "Some error while uploading to the database");
   }
 
-  const video = await Video.findById(addVideo._id).select("-thumbnailPublicId -videoPublicId")
+  const video = await Video.findById(addVideo._id).select(
+    "-thumbnailPublicId -videoPublicId"
+  );
 
   return res
     .status(200)
     .json(new ApiResponse(200, video, "Video has been uploaded successfully"));
 });
+
+// Delete a video
 
 const deleteVideo = asyncHandler(async (req, res) => {
   const { videoId } = req.params;
@@ -72,6 +80,7 @@ const deleteVideo = asyncHandler(async (req, res) => {
 
   console.log(video.publicId);
 
+  // Delete video and thumbnail from cloudinary
   await cloudinary.uploader
     .destroy(video.videoPublicId, { resource_type: "video" })
     .then((result) => console.log(result));
@@ -80,71 +89,142 @@ const deleteVideo = asyncHandler(async (req, res) => {
     .destroy(video.thumbnailPublicId, { resource_type: "image" })
     .then((result) => console.log(result));
 
-  const deletedVideo = await Video.findByIdAndDelete(videoId).select("-thumbnailPublicId -videoPublicId")
+  const deletedVideo = await Video.findByIdAndDelete(videoId).select(
+    "-thumbnailPublicId -videoPublicId"
+  );
 
   res.status(200).json(new ApiResponse(200, { deletedVideo }));
 });
 
-export { uploadVideo, deleteVideo };
+// get video by ID
 
-// video : {
-//     asset_id: '62787ede28e2c23d3af55b2690b56e1a',
-//     public_id: 'qpdwftidxx0dhnpzrk9f',
-//     version: 1715431464,
-//     version_id: 'cc98692d52375d999eb5f12b6c484fdd',
-//     signature: 'b039da08a09e0268e3c80bb115f2d6a136580fd9',
-//     width: 1080,
-//     height: 1920,
-//     format: 'mp4',
-//     resource_type: 'video',
-//     created_at: '2024-05-11T12:44:24Z',
-//     tags: [],
-//     pages: 0,
-//     bytes: 18968203,
-//     type: 'upload',
-//     etag: '897b36bb7d3e00ea6bbf17a3e59d8b54',
-//     placeholder: false,
-//     url: 'http://res.cloudinary.com/sreedev/video/upload/v1715431464/qpdwftidxx0dhnpzrk9f.mp4',
-//     secure_url: 'https://res.cloudinary.com/sreedev/video/upload/v1715431464/qpdwftidxx0dhnpzrk9f.mp4',
-//     playback_url: 'https://res.cloudinary.com/sreedev/video/upload/sp_auto/v1715431464/qpdwftidxx0dhnpzrk9f.m3u8',
-//     folder: '',
-//     audio: {},
-//     video: {
-//       pix_format: 'yuv420p',
-//       codec: 'h264',
-//       level: 40,
-//       profile: 'High',
-//       bit_rate: '5408853',
-//       time_base: '1/25'
-//     },
-//     frame_rate: 25,
-//     bit_rate: 5411755,
-//     duration: 28.04,
-//     rotation: 0,
-//     original_filename: '7565438-hd_1080_1920_25fps',
-//     nb_frames: 701,
-//     api_key: '448964677232843'
-//   }
+const getVideoById = asyncHandler(async (req, res) => {
+  const { videoId } = req.params;
 
-// Thumbnail:  {
-//     asset_id: 'a4488893ae0a677c00604323c94f237c',
-//     public_id: 'apriycenr1zqf84qzvuy',
-//     version: 1715431525,
-//     version_id: 'c5e608f218fcd084f0529a222863f9b2',
-//     signature: '0beedff43c7579483975328300c3104987652279',
-//     width: 6000,
-//     height: 4000,
-//     format: 'jpg',
-//     resource_type: 'image',
-//     created_at: '2024-05-11T12:45:25Z',
-//     tags: [],
-//     bytes: 895024,
-//     type: 'upload',
-//     etag: 'e4483adeb386972acb397dfedc0a68c3',
-//     placeholder: false,
-//     url: 'http://res.cloudinary.com/sreedev/image/upload/v1715431525/apriycenr1zqf84qzvuy.jpg',
-//     secure_url: 'https://res.cloudinary.com/sreedev/image/upload/v1715431525/apriycenr1zqf84qzvuy.jpg',
-//     folder: '',
-//     original_filename: 'pexels-pixabay-355235',
-//     api_key: '448964677232843'
-//   }
+  if (!videoId) {
+    throw new ApiError(400, "Please provide a vaid ID");
+  }
+
+  const video = await Video.findById(videoId).select(
+    "-videoPublicId -thumbnailPublicId"
+  );
+
+  if (!video) {
+    throw new ApiError(404, "Video was not found");
+  }
+
+  return res
+    .status(200)
+    .json(new ApiResponse(200, video, "Video has been fetched successfully"));
+});
+
+// Update Video
+
+const updateVideo = asyncHandler(async (req, res) => {
+  const { videoId } = req.params;
+
+  if (!videoId) {
+    throw new ApiError(404, "No video was found");
+  }
+
+  const oldVideo = await Video.findById(videoId);
+
+  const { title, description, isPublished } = req.body;
+
+  if (!(title && description && isPublished)) {
+    throw new ApiError(400, "Please fill every field");
+  }
+
+  let newThumbnail;
+
+  if (req.file && req.file.path) {
+    const newThumbnailPath = req.file.path;
+
+    newThumbnail = await uploadOnCloudinary(newThumbnailPath);
+  }
+
+  // Create a update obeject to pass in the update method later
+  const updateObject = {
+    $set: {
+      title,
+      description,
+      isPublished,
+    },
+  };
+
+  // Add thumbnail and thumbnailPublicId only if it has been passed
+  if (newThumbnail?.url) {
+    updateObject.$set.thumbnail = newThumbnail.url;
+    updateObject.$set.thumbnailPublicId = newThumbnail.public_id;
+  }
+
+  const updatedVideo = await Video.findByIdAndUpdate(videoId, updateObject, {
+    new: true,
+  }).select("-videoPublicId -thumbnailPublicId");
+
+  if (!updatedVideo) {
+    throw new ApiError(500, "There was some error while updating the video1");
+  }
+
+  // Delete old thumbnail from cloudinary
+  if (newThumbnail?.url !== oldVideo.thumbnail) {
+    await cloudinary.uploader
+      .destroy(oldVideo.thumbnailPublicId, { resource_type: "image" })
+      .then((result) => console.log(result));
+  }
+
+  return res
+    .status(200)
+    .json(
+      new ApiResponse(200, updatedVideo, "Video has been updated successfully")
+    );
+});
+
+// Get all Videos
+const getAllVideos = asyncHandler(async (req, res) => {
+  const allVidoes = await Video.find({});
+
+  if (!allVidoes) {
+    throw new ApiError(500, "Error while fetching all videos");
+  }
+
+  return res
+    .status(200)
+    .json(new ApiResponse(200, allVidoes, "All vidoes fetched successfully"));
+});
+
+// Toggle Publish status
+const togglePublishStatus = asyncHandler(async (req, res) => {
+  const { videoId } = req.params;
+
+  console.log(req.body);
+
+  const updatedVideo = await Video.findByIdAndUpdate(
+    videoId,
+    {
+      $set: {
+        isPublished: req.body.isPublished,
+      },
+    },
+    { new: true }
+  );
+
+  return res
+    .status(200)
+    .json(
+      new ApiResponse(
+        200,
+        updatedVideo,
+        "Your video's published status has been updated successfully"
+      )
+    );
+});
+
+export {
+  uploadVideo,
+  deleteVideo,
+  getVideoById,
+  updateVideo,
+  getAllVideos,
+  togglePublishStatus,
+};
